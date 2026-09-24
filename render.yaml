@@ -18,7 +18,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false # optional — enables real LLM calls; leave empty for the built-in fallback
       - key: SKILLSWAP_DB
-        value: /var/data/skillswap.db # only used if a Render disk is attached (see disks below)
+        sync: false # leave empty for the free tier (ephemeral DB, auto-reseeds); set to /var/data/skillswap.db only when you attach the disk below
     # Uncomment to persist the SQLite DB across deploys (free tier has no
     # persistent disk — without this the demo data reseeds on every restart):
     # disks:

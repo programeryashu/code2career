@@ -32,6 +32,12 @@ from .schemas import (
 from .seed import seed_if_empty
 
 DB_PATH = os.environ.get("SKILLSWAP_DB", "skillswap.db")
+# The DB's parent directory may not exist on a fresh machine (e.g. a Render
+# disk mount path before the disk is attached) — create it so boot never
+# crashes with "unable to open database file".
+_db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+if _db_dir:
+    os.makedirs(_db_dir, exist_ok=True)
 ENGINE = make_engine(f"sqlite:///{DB_PATH}")
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False)
 
