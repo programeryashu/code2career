@@ -54,9 +54,12 @@ async def lifespan(_: FastAPI):
 
 
 DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
-_origins = [
+_raw_origins = [
     o.strip() for o in os.environ.get("CORS_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()
 ]
+# "*" allows any origin (handy for demo deploys; no credentials are sent,
+# so the wildcard is safe here)
+_origins = ["*"] if "*" in _raw_origins else _raw_origins
 
 app = FastAPI(title="SkillSwap API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(

@@ -1,0 +1,27 @@
+# Render Blueprint — deploys the SkillSwap FastAPI backend.
+# In Render: New + → Blueprint → connect this repository → Apply.
+# The deployed frontend (Vercel/Netlify) must be added to CORS_ORIGINS.
+services:
+  - type: web
+    name: skillswap-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: CORS_ORIGINS
+        sync: false # set to your deployed frontend URL, e.g. https://skillswap.vercel.app (use * to allow any origin)
+      - key: OPENAI_API_KEY
+        sync: false # optional — enables real LLM calls; leave empty for the built-in fallback
+      - key: SKILLSWAP_DB
+        value: /var/data/skillswap.db # only used if a Render disk is attached (see disks below)
+    # Uncomment to persist the SQLite DB across deploys (free tier has no
+    # persistent disk — without this the demo data reseeds on every restart):
+    # disks:
+    #   - name: skillswap-data
+    #     mountPath: /var/data
+    #     sizeGB: 1

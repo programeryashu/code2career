@@ -2,7 +2,7 @@
 
 FastAPI + SQLAlchemy backend for **SkillSwap**, a student gig marketplace where creators post services (websites, design, video editing, tutoring…) and clients book them.
 
-The repo root holds the React frontend; this folder is the complete, self-contained API service. It runs on SQLite with zero external services — AI endpoints call OpenAI **only if** `OPENAI_API_KEY` is set, and otherwise fall back to deterministic on-device heuristics.
+The repo root holds the React frontend — see the [root README](../README.md) for the full-stack overview, combined quickstart, and deployment guide. This folder is the complete, self-contained API service. It runs on SQLite with zero external services — AI endpoints call OpenAI **only if** `OPENAI_API_KEY` is set, and otherwise fall back to deterministic on-device heuristics.
 
 ---
 
@@ -81,7 +81,7 @@ uvicorn app.main:app --reload --port 8000
 | Variable          | Default                              | Purpose |
 |-------------------|--------------------------------------|---------|
 | `SKILLSWAP_DB`    | `skillswap.db`                       | SQLite file path |
-| `CORS_ORIGINS`    | `http://localhost:5173` + 127.0.0.1  | Comma-separated allowed origins (Vite dev server) |
+| `CORS_ORIGINS`    | `http://localhost:5173` + 127.0.0.1  | Comma-separated allowed origins (Vite dev server, deployed frontend). Set to `*` to allow any origin |
 | `OPENAI_API_KEY`  | —                                    | Enables real LLM calls; omit for the built-in heuristics |
 
 ---
