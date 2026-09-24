@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ErrorNote, Field, PageHeading, Spinner, btnGhost, btnPrimary, inputClass } from "../components/ui";
 import { useUsers } from "../context/UserContext";
-import {
-  ErrorNote,
-  Field,
-  PageHeading,
-  Spinner,
-  btnPrimary,
-  inputClass,
-} from "../components/ui";
 import { api } from "../lib/apiClient";
 import { formatINR } from "../lib/format";
 import type { GigWithCreator } from "../lib/types";
@@ -27,7 +20,6 @@ export default function BookGigPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  // Keep the prefilled name in sync if the user switches persona.
   useEffect(() => {
     setName((n) => n || currentUser?.name || "");
   }, [currentUser]);
@@ -50,8 +42,8 @@ export default function BookGigPage() {
     };
   }, [id]);
 
-  if (loading) return <Spinner label="Loading gig…" />;
-  if (error || !gig) return <ErrorNote message={error || "Gig not found."} />;
+  if (loading) return <Spinner label="Loading service…" />;
+  if (error || !gig) return <ErrorNote message={error || "Service not found."} />;
 
   const offerNumber = Number(offer);
   const offerValid =
@@ -73,7 +65,6 @@ export default function BookGigPage() {
         ...(details.trim() ? { initial_message: details.trim() } : {}),
         ...(useOffer && offer ? { offer_price: Math.round(offerNumber) } : {}),
       });
-      // Confirmation page, as required by the brief.
       navigate(`/bookings/${booking.id}/confirmed`);
     } catch (err) {
       setError((err as Error).message);
@@ -82,34 +73,49 @@ export default function BookGigPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <Link to={`/gigs/${gig.id}`} className="text-sm font-semibold text-violet-700 hover:underline">
-        ← Back to gig
+    <div className="mx-auto max-w-2xl space-y-6">
+      <Link to={`/gigs/${gig.id}`} className="text-xs font-semibold text-violet-700 hover:underline">
+        ← Back to service details
       </Link>
-      <PageHeading title="Book Gig" subtitle="Fill in your details to send a booking request." />
 
-      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-500">Service</p>
-        <div className="mt-1 flex items-baseline justify-between gap-4">
-          <h2 className="text-lg font-bold text-slate-900">{gig.title}</h2>
-          <span className="text-xl font-extrabold text-slate-900">{formatINR(gig.rate)}</span>
+      <PageHeading
+        title="Book service"
+        subtitle="Submit your project requirements to request this booking."
+      />
+
+      {/* Selected Service Card */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          Selected Service
+        </span>
+        <div className="mt-2 flex items-baseline justify-between gap-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">{gig.title}</h2>
+            <p className="text-xs text-slate-500">by {gig.creator_name}</p>
+          </div>
+          <div className="text-right">
+            <span className="text-xl font-extrabold text-slate-900">
+              {formatINR(gig.rate)}
+            </span>
+          </div>
         </div>
-        <p className="text-sm text-slate-500">by {gig.creator_name}</p>
       </div>
 
+      {/* Booking Form */}
       <form
         onSubmit={submit}
-        className="mt-5 space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="space-y-6 rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs"
       >
-        <Field label="Your Name">
+        <Field label="Your Name" hint="Client identity for this booking" required>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Ashutosh"
+            placeholder="e.g. John Doe"
             className={inputClass}
           />
         </Field>
-        <Field label="Deadline" hint="When do you need the work delivered?">
+
+        <Field label="Target Deadline" hint="When do you need the deliverables completed?" required>
           <input
             type="date"
             value={deadline}
@@ -120,58 +126,67 @@ export default function BookGigPage() {
         </Field>
 
         <Field
-          label="Project details"
-          hint="Shared privately with the creator as your first message."
+          label="Project Requirements & Scope"
+          hint="Describe your goals, reference links, and key specifications"
         >
           <textarea
             value={details}
             onChange={(e) => setDetails(e.target.value)}
-            rows={3}
-            placeholder="Scope, links, references, anything the creator should know…"
+            rows={4}
+            placeholder="Tell the creator about what you'd like built or edited..."
             className={inputClass}
           />
         </Field>
 
-        {/* Bargain: optional lower offer */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+        {/* Optional Price Proposal / Negotiation */}
+        <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={useOffer}
               onChange={(e) => setUseOffer(e.target.checked)}
-              className="h-4 w-4 accent-violet-600"
+              className="rounded text-violet-600 focus:ring-violet-500"
             />
-            Bargain — offer a lower price
+            <span className="text-xs font-semibold text-slate-800">
+              Propose a custom starting offer price (optional)
+            </span>
           </label>
+
           {useOffer && (
-            <div className="mt-3 flex items-center gap-3">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">₹</span>
-                <input
-                  value={offer}
-                  onChange={(e) => setOffer(e.target.value)}
-                  inputMode="numeric"
-                  placeholder={String(Math.max(1, Math.round(gig.rate * 0.8)))}
-                  className={`${inputClass} w-36 pl-7`}
-                />
-              </div>
-              <p className="text-xs text-slate-500">
-                listed: {formatINR(gig.rate)} — the creator can accept, counter, or decline.
+            <div className="mt-3">
+              <input
+                type="number"
+                value={offer}
+                onChange={(e) => setOffer(e.target.value)}
+                placeholder={`Less than standard rate (${gig.rate})`}
+                className={inputClass}
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                The creator can accept, counter-offer, or decline your proposed rate in the chat thread.
               </p>
             </div>
           )}
-          {useOffer && !offerValid && (
-            <p className="mt-2 text-xs font-medium text-rose-600">
-              Offer must be above 0 and below {formatINR(gig.rate)}.
-            </p>
-          )}
         </div>
 
-        {error && <ErrorNote message={error} />}
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+            {error}
+          </div>
+        )}
 
-        <button type="submit" disabled={!valid || busy} className={btnPrimary}>
-          {busy ? "Sending…" : "Confirm Booking"}
-        </button>
+        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+          <Link to={`/gigs/${gig.id}`} className={btnGhost}>
+            Cancel
+          </Link>
+
+          <button
+            type="submit"
+            disabled={!valid || busy}
+            className={`${btnPrimary} px-6`}
+          >
+            {busy ? "Submitting request…" : "Confirm Booking Request →"}
+          </button>
+        </div>
       </form>
     </div>
   );

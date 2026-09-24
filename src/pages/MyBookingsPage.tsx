@@ -6,31 +6,14 @@ import { useUsers } from "../context/UserContext";
 import { api } from "../lib/apiClient";
 import { formatDeadline, formatINR } from "../lib/format";
 import { unreadCount } from "../lib/seen";
-import type { BookingWithDetails, Category } from "../lib/types";
-
-function BargainChip({ booking }: { booking: BookingWithDetails }) {
-  if (booking.agreed_price != null) {
-    return (
-      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-        🤝 {formatINR(booking.agreed_price)} agreed
-      </span>
-    );
-  }
-  if (booking.offer_price != null) {
-    return (
-      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-        💬 offer {formatINR(booking.offer_price)}
-      </span>
-    );
-  }
-  return null;
-}
+import type { BookingStatus, BookingWithDetails } from "../lib/types";
 
 export default function MyBookingsPage() {
   const { currentUser } = useUsers();
   const [rows, setRows] = useState<BookingWithDetails[] | null>(null);
   const [unread, setUnread] = useState<Record<number, number>>({});
   const [error, setError] = useState("");
+  const [selectedTab, setSelectedTab] = useState<BookingStatus | "all">("all");
 
   useEffect(() => {
     if (!currentUser) return;
@@ -65,105 +48,145 @@ export default function MyBookingsPage() {
       <EmptyState
         emoji="🙋"
         title="Who are you booking as?"
-        body="Pick a persona (top-right) to see the bookings you made as a client."
+        body="Select a client persona from the top-right switcher to see your requested services and status."
       />
     );
   }
 
+  const filteredRows =
+    rows?.filter((b) => (selectedTab === "all" ? true : b.status === selectedTab)) ?? [];
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeading
         title="My Bookings"
-        subtitle={`Requests you've made as ${currentUser.name}, with live status.`}
+        subtitle={`Service requests and active projects initiated as ${currentUser.name}.`}
+        action={
+          <Link
+            to="/marketplace"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-violet-700"
+          >
+            <span>Explore Services</span>
+            <span>→</span>
+          </Link>
+        }
       />
 
       {error && <ErrorNote message={error} />}
+
+      {/* Status Filter Tabs */}
+      <div className="flex gap-1.5 border-b border-slate-200/80 pb-3">
+        {(
+          [
+            { id: "all", label: "All Requests" },
+            { id: "pending", label: "Pending" },
+            { id: "accepted", label: "Accepted" },
+            { id: "declined", label: "Declined" },
+          ] as const
+        ).map((tab) => {
+          const count =
+            tab.id === "all"
+              ? (rows?.length ?? 0)
+              : (rows?.filter((b) => b.status === tab.id).length ?? 0);
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedTab(tab.id)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                selectedTab === tab.id
+                  ? "bg-slate-900 text-white"
+                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                  selectedTab === tab.id ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {rows === null ? (
         <Spinner label="Loading your bookings…" />
-      ) : rows.length === 0 ? (
+      ) : filteredRows.length === 0 ? (
         <EmptyState
           emoji="📭"
-          title="No bookings yet"
-          body="Find a creator you like and book their gig — your requests will show up here."
+          title="No bookings in this category"
+          body={
+            selectedTab === "all"
+              ? "Find a creator you like and book their service — your requests will appear here."
+              : `You have no ${selectedTab} bookings right now.`
+          }
           action={
             <Link
-              to="/"
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+              to="/marketplace"
+              className="inline-flex items-center justify-center rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700"
             >
-              Browse the Marketplace
+              Explore services
             </Link>
           }
         />
       ) : (
-        <ul className="space-y-3">
-          {rows.map((b) => (
-            <li
+        <div className="space-y-3">
+          {filteredRows.map((b) => (
+            <div
               key={b.id}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+              className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs transition hover:border-slate-300 sm:flex-row sm:items-center"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <Link
-                    to={`/gigs/${b.gig_id}`}
-                    className="font-semibold text-slate-900 hover:text-violet-700"
-                  >
-                    {b.gig_title}
-                  </Link>
-                  {unread[b.id] > 0 && (
-                    <span className="ml-2 rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">
-                      {unread[b.id]} new
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-900">{b.gig_title}</span>
+                  <StatusBadge status={b.status} />
+                  {b.agreed_price != null && (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200/60">
+                      🤝 Agreed {formatINR(b.agreed_price)}
                     </span>
                   )}
-                  <p className="text-sm text-slate-500">
-                    by {b.creator_name} · due {formatDeadline(b.deadline)}
-                  </p>
+                  {unread[b.id] > 0 && (
+                    <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                      {unread[b.id]} new messages
+                    </span>
+                  )}
                 </div>
-                <div className="text-right">
-                  <div className="font-extrabold text-slate-900">
-                    {formatINR(b.agreed_price ?? b.rate)}
-                    <BargainChip booking={b} />
-                  </div>
-                  <StatusBadge status={b.status} />
-                </div>
+
+                <p className="text-xs text-slate-500">
+                  Creator:{" "}
+                  <Link
+                    to={`/creators/${b.gig_id}`}
+                    className="font-semibold text-slate-700 hover:text-violet-700 hover:underline"
+                  >
+                    {b.creator_name}
+                  </Link>{" "}
+                  · Target deadline: <span className="font-semibold text-slate-700">{formatDeadline(b.deadline)}</span>
+                </p>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
+
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-right">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400">
+                    Rate
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-900">
+                    {formatINR(b.agreed_price ?? b.rate)}
+                  </span>
+                </div>
+
                 <Link
                   to={`/bookings/${b.id}`}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-violet-300 hover:text-violet-700"
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900"
                 >
-                  💬 Chat &amp; details
+                  View Details & Chat →
                 </Link>
-                {b.status === "pending" && b.offer_price == null && b.agreed_price == null && (
-                  <Link
-                    to={`/bookings/${b.id}`}
-                    className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                  >
-                    🏷️ Bargain
-                  </Link>
-                )}
               </div>
-              {b.status === "declined" && <DeclinedNote category={b.gig_category} />}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-    </div>
-  );
-}
-
-/** DP1 — after a decline the client sees why, and a way forward. */
-function DeclinedNote({ category }: { category: Category }) {
-  return (
-    <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
-      <p className="text-sm font-medium text-rose-700">
-        Creator declined this booking. The booking is closed — no further actions.
-      </p>
-      <Link
-        to={`/?category=${encodeURIComponent(category)}`}
-        className="mt-2 inline-block rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
-      >
-        Find Another Creator
-      </Link>
     </div>
   );
 }

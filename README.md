@@ -1,5 +1,7 @@
 # ⚡ SkillSwap — Student Gig Marketplace
 
+Hackathon ID: AZIS-XA4ZYC
+
 A full-stack marketplace where student creators post services (websites, design, video editing, tutoring…) and clients book them — with real booking rules, smart discovery, and AI assist features.
 
 React + TypeScript + Vite + Tailwind · FastAPI + SQLAlchemy + SQLite

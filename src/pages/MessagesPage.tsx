@@ -32,16 +32,16 @@ export default function MessagesPage() {
         currentUser ? api.listGigsByCreator(currentUser.id) : Promise.resolve([]),
       ]);
       const creatorGigIds = new Set(created.map((g) => g.id));
-      // Bookings where I'm the client OR the creator (their chat is mine).
+      void creatorGigIds;
+
       const allMine = new Map<number, BookingWithDetails | BookingWithGig>();
       for (const b of myBookings) allMine.set(b.id, b);
       try {
         const incoming = await api.listCreatorBookings(currentUser.id);
         for (const b of incoming) if (!allMine.has(b.id)) allMine.set(b.id, b);
       } catch {
-        // creator list is optional here
+        // creator list optional
       }
-      void creatorGigIds;
 
       const dmRows: InboxRow[] = [];
       for (const t of dms) {
@@ -66,11 +66,11 @@ export default function MessagesPage() {
         bookingRows.push({
           key: `booking-${b.id}`,
           to: `/bookings/${b.id}`,
-          title: `Booking #${b.id} — ${withGig.gig_title ?? "gig"}`,
+          title: `Booking #${b.id} — ${withGig.gig_title ?? "service"}`,
           preview:
             b.initial_message ??
             msgs[msgs.length - 1]?.body ??
-            "Project details & negotiation",
+            "Project details and negotiation thread",
           when: b.created_at,
           unread: unreadCount(currentUser.id, `booking-${b.id}`, msgs, currentUser.id),
           kind: "booking",
@@ -111,7 +111,7 @@ export default function MessagesPage() {
       <EmptyState
         emoji="🙋"
         title="Who are you messaging as?"
-        body="Pick a persona (top-right) to open your inbox."
+        body="Select a persona from the top-right switcher to open your inbox and direct message threads."
       />
     );
   }
@@ -119,26 +119,26 @@ export default function MessagesPage() {
   const others = users.filter((u) => u.id !== currentUser.id);
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeading
-        title="Messages"
-        subtitle="Direct conversations — with creators, clients, and per-booking chats."
+        title="Messages & Conversations"
+        subtitle="Direct communication with clients, creators, and active booking threads."
       />
 
       {error && <ErrorNote message={error} />}
 
-      {/* New conversation picker */}
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Start a new conversation
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
+      {/* Start conversation quick pills */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          Start a new direct message
+        </span>
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {others.map((u) => (
             <button
               key={u.id}
               onClick={() => startConversation(u.id)}
               disabled={starting != null}
-              className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
             >
               {starting === u.id ? "Opening…" : `💬 ${u.name}`}
             </button>
@@ -146,49 +146,50 @@ export default function MessagesPage() {
         </div>
       </div>
 
+      {/* Message List */}
       {rows === null ? (
-        <Spinner label="Loading your inbox…" />
+        <Spinner label="Loading conversations…" />
       ) : rows.length === 0 ? (
         <EmptyState
           emoji="📭"
           title="No conversations yet"
-          body="Message a creator from any gig page, or pick someone above."
+          body="Message a creator from any service page or start a conversation with the personas above."
         />
       ) : (
-        <ul className="space-y-2">
-          {rows.map((r) => (
-            <li key={r.key}>
-              <Link
-                to={r.to}
-                onClick={() => currentUser && markSeen(currentUser.id, r.key)}
-                className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-violet-300"
-              >
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-100 text-lg">
-                  {r.kind === "dm" ? "💬" : "📦"}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate font-semibold text-slate-900">{r.title}</span>
-                    {r.unread > 0 && (
-                      <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">
-                        {r.unread} new
-                      </span>
-                    )}
+        <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
+          <ul className="divide-y divide-slate-100">
+            {rows.map((r) => (
+              <li key={r.key}>
+                <Link
+                  to={r.to}
+                  onClick={() => currentUser && markSeen(currentUser.id, r.key)}
+                  className="flex items-center gap-3.5 p-4 hover:bg-slate-50/70 transition-colors"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm">
+                    {r.kind === "dm" ? "💬" : "📦"}
                   </span>
-                  <span className="mt-0.5 block truncate text-sm text-slate-500">
-                    {r.preview}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-xs font-bold text-slate-900">{r.title}</span>
+                      {r.unread > 0 && (
+                        <span className="rounded-full bg-violet-600 px-2 py-0.2 text-[10px] font-bold text-white">
+                          {r.unread} new
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{r.preview}</p>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-slate-400">
+                    {new Date(r.when).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                    })}
                   </span>
-                </span>
-                <span className="shrink-0 text-xs text-slate-400">
-                  {new Date(r.when).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                  })}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

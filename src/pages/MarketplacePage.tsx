@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import GigCard from "../components/GigCard";
-import { EmptyState, ErrorNote, PageHeading, Spinner, inputClass } from "../components/ui";
+import { EmptyState, ErrorNote, PageHeading, SkeletonGrid, inputClass } from "../components/ui";
 import { api } from "../lib/apiClient";
 import { CATEGORIES, type Category, type GigWithCreator, type SortOption } from "../lib/types";
 
@@ -12,10 +12,11 @@ const SORTS: { value: SortOption; label: string }[] = [
 ];
 
 export default function MarketplacePage() {
-  // DP1 deep-link support: /?category=Design arrives from "Find Another Creator".
   const [searchParams] = useSearchParams();
   const initialCategory = searchParams.get("category") as Category | null;
-  const [q, setQ] = useState("");
+  const initialQ = searchParams.get("q") || "";
+
+  const [q, setQ] = useState(initialQ);
   const [category, setCategory] = useState<Category | "All">(
     initialCategory && CATEGORIES.includes(initialCategory) ? initialCategory : "All",
   );
@@ -24,8 +25,20 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Debounce the search box so typing doesn't spam the API.
-  const debouncedQ = useDebounced(q, 250);
+  // Sync state if URL query params change
+  useEffect(() => {
+    const urlCategory = searchParams.get("category") as Category | null;
+    const urlQ = searchParams.get("q");
+    if (urlCategory && CATEGORIES.includes(urlCategory)) {
+      setCategory(urlCategory);
+    }
+    if (urlQ !== null) {
+      setQ(urlQ);
+    }
+  }, [searchParams]);
+
+  // Debounce search input
+  const debouncedQ = useDebounced(q, 200);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,29 +63,50 @@ export default function MarketplacePage() {
   }, [debouncedQ, category, sort]);
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeading
-        title="Marketplace"
-        subtitle="Gigs by student creators — search, filter and book in seconds."
+        title="Explore services"
+        subtitle="Find skilled creators for your next project."
+        action={
+          <Link
+            to="/gigs/new"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-violet-700 transition"
+          >
+            <span>+</span>
+            <span>Post a Gig</span>
+          </Link>
+        }
       />
 
-      {/* Search + sort (DP3) */}
+      {/* Search and Sort controls */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder='Search gigs — try "React" or "video"'
-          className={`${inputClass} sm:max-w-md`}
-        />
+        <div className="relative flex-1">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search services, skills or creators..."
+            className={`${inputClass} pl-10`}
+          />
+          <span className="absolute left-3.5 top-3 text-sm text-slate-400">🔍</span>
+          {q && (
+            <button
+              onClick={() => setQ("")}
+              className="absolute right-3 top-3 text-xs text-slate-400 hover:text-slate-600"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-2 sm:ml-auto">
-          <label htmlFor="sort" className="text-sm text-slate-500">
-            Sort:
+          <label htmlFor="sort" className="text-xs font-semibold text-slate-500 shrink-0">
+            Sort by:
           </label>
           <select
             id="sort"
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
-            className={`${inputClass} w-auto py-1.5`}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 focus:border-violet-500 focus:outline-none"
           >
             {SORTS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -83,43 +117,48 @@ export default function MarketplacePage() {
         </div>
       </div>
 
-      {/* Category filter chips */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* Category filter tabs */}
+      <div className="flex flex-wrap gap-1.5">
         {(["All", ...CATEGORIES] as const).map((c) => (
           <button
             key={c}
             onClick={() => setCategory(c)}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
               category === c
-                ? "bg-violet-600 text-white shadow-sm"
-                : "border border-slate-300 bg-white text-slate-600 hover:border-violet-300 hover:text-violet-700"
+                ? "bg-slate-900 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             }`}
           >
-            {c}
+            {c === "Video Editing" ? "Video" : c === "Content" ? "Writing" : c}
           </button>
         ))}
       </div>
 
+      {/* Results Section */}
       <div className="mt-6">
         {error && <ErrorNote message={error} />}
+
         {loading ? (
-          <Spinner label="Loading gigs…" />
+          <SkeletonGrid count={6} />
         ) : gigs.length === 0 ? (
           <EmptyState
             emoji="🔍"
-            title="No gigs match"
-            body="Try a different search term or category — or be the first to post this kind of gig."
+            title="No services found"
+            body="Try another search term or select a different category."
             action={
-              <Link
-                to="/gigs/new"
-                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+              <button
+                onClick={() => {
+                  setQ("");
+                  setCategory("All");
+                }}
+                className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
               >
-                Post a Gig
-              </Link>
+                Clear all filters
+              </button>
             }
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {gigs.map((gig) => (
               <GigCard key={gig.id} gig={gig} />
             ))}
