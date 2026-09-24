@@ -743,7 +743,7 @@ const liveApi: ISkillswapApi = {
   assistGig: (text) =>
     liveFetch<GigAssist>("/gigs/assist", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ prompt: text }),
     }),
   listDmThreads: (userId) =>
     liveFetch<DmThread[]>(`/dm/threads?user_id=${userId}`),

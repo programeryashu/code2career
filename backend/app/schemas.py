@@ -38,6 +38,8 @@ class BookingCreate(BaseModel):
     client_name: str = Field(min_length=1, max_length=80)
     deadline: str = Field(min_length=8, max_length=20)
     requirements: str = Field(default="", max_length=2000)
+    initial_message: Optional[str] = Field(default=None, max_length=2000)
+    offer_price: Optional[int] = Field(default=None, ge=1)
 
 
 class BookingStatusUpdate(BaseModel):
@@ -118,6 +120,36 @@ class BriefRequest(BaseModel):
     category: Optional[Category] = None
 
 
+# ---- direct messages ----
+
+class DmThreadOut(BaseModel):
+    id: int
+    other_user_id: int
+    other_user_name: str
+    last_message: Optional[str] = None
+    last_message_at: datetime
+    created_at: datetime
+
+
+class DmThreadCreate(BaseModel):
+    me_id: int
+    other_user_id: int
+
+
+class DmMessageOut(BaseModel):
+    id: int
+    thread_id: int
+    sender_id: int
+    sender_name: str
+    body: str
+    created_at: datetime
+
+
+class DmMessageCreate(BaseModel):
+    sender_id: int
+    body: str = Field(min_length=1, max_length=2000)
+
+
 class ProjectBrief(BaseModel):
     objective: str
     deliverables: list[str]
@@ -136,7 +168,34 @@ class BookingOut(BaseModel):
     client_name: str
     deadline: str
     requirements: str = ""
+    initial_message: Optional[str] = None
+    offer_price: Optional[int] = None
+    offer_by: Optional[Literal["client", "creator"]] = None
+    agreed_price: Optional[int] = None
     status: BookingStatus
     decided_reason: Optional[str] = None
     decided_at: Optional[datetime] = None
     created_at: datetime
+
+
+# ---- booking chat + bargaining ----
+
+class MessageOut(BaseModel):
+    id: int
+    booking_id: int
+    sender_id: Optional[int] = None
+    sender_name: str
+    kind: Literal["user", "system"] = "user"
+    body: str
+    created_at: datetime
+
+
+class MessageCreate(BaseModel):
+    sender_id: int
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class BargainPayload(BaseModel):
+    actor_id: int
+    action: Literal["offer", "accept", "counter", "decline"]
+    price: Optional[int] = Field(default=None, ge=1)

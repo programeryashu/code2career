@@ -279,3 +279,154 @@ def test_creator_profile_endpoint(client):
     assert any("React" in s for s in prof["creator"]["skills"])
     r = client.get("/creators/99999")
     assert r.status_code == 404
+
+
+# ---------- v3: booking chat, bargaining, DMs (live-mode parity) ----------
+
+def test_booking_initial_message_and_offer_seed_the_chat(client):
+    creator = make_user(client, "Seed Chat Creator")
+    cl = make_user(client, "Seed Chat Client")
+    gig = make_gig(client, creator["id"], "Seed Chat Gig", rate=2000)
+
+    r = client.post("/bookings", json={
+        "gig_id": gig["id"], "client_id": cl["id"], "client_name": "Seed Chat Client",
+        "deadline": "2026-12-01", "initial_message": "Five pages, indigo accents.",
+        "offer_price": 1600,
+    })
+    assert r.status_code == 201, r.text
+    booking = r.json()
+    assert booking["initial_message"] == "Five pages, indigo accents."
+    assert booking["offer_price"] == 1600
+    assert booking["offer_by"] == "client"
+
+    msgs = client.get(
+        f"/bookings/{booking['id']}/messages", params={"viewer_id": cl["id"]}
+    ).json()
+    assert any(m["kind"] == "user" and "Five pages" in m["body"] for m in msgs)
+    assert any(m["kind"] == "system" and "offered ₹1,600" in m["body"] for m in msgs)
+
+
+def test_booking_chat_permissions_and_declined_lock(client):
+    creator = make_user(client, "Chat Perm Creator")
+    cl = make_user(client, "Chat Perm Client")
+    outsider = make_user(client, "Chat Outsider")
+    gig = make_gig(client, creator["id"], "Chat Perm Gig")
+    booking = make_booking(client, gig["id"], cl["id"], "Chat Perm Client")
+
+    # stranger cannot read or write
+    r = client.get(f"/bookings/{booking['id']}/messages", params={"viewer_id": outsider["id"]})
+    assert r.status_code == 403
+    r = client.post(f"/bookings/{booking['id']}/messages", json={"sender_id": outsider["id"], "body": "hi"})
+    assert r.status_code == 403
+
+    # parties can write
+    r = client.post(f"/bookings/{booking['id']}/messages", json={"sender_id": creator["id"], "body": "On it!"})
+    assert r.status_code == 201
+    assert r.json()["sender_name"] == "Chat Perm Creator"
+
+    # after a decline, chat closes for everyone
+    assert decide(client, booking["id"], creator["id"], "declined").status_code == 200
+    r = client.post(f"/bookings/{booking['id']}/messages", json={"sender_id": cl["id"], "body": "hello?"})
+    assert r.status_code == 409
+
+
+def test_bargain_full_flow_offer_counter_accept(client):
+    creator = make_user(client, "Bargain Creator")
+    cl = make_user(client, "Bargain Client")
+    gig = make_gig(client, creator["id"], "Bargain Gig", rate=2000)
+    booking = make_booking(client, gig["id"], cl["id"], "Bargain Client")
+    bid = booking["id"]
+
+    # only the client can open; offers must stay below the listed rate
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": creator["id"], "action": "offer", "price": 1500})
+    assert r.status_code == 403
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": cl["id"], "action": "offer", "price": 2500})
+    assert r.status_code == 422
+
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": cl["id"], "action": "offer", "price": 1500})
+    assert r.status_code == 200
+    assert r.json()["offer_price"] == 1500 and r.json()["offer_by"] == "client"
+
+    # double offer rejected; only the creator may respond
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": cl["id"], "action": "offer", "price": 1400})
+    assert r.status_code == 409
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": cl["id"], "action": "counter", "price": 1700})
+    assert r.status_code == 403
+
+    # creator counters, client accepts
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": creator["id"], "action": "counter", "price": 1700})
+    assert r.status_code == 200
+    assert r.json()["offer_by"] == "creator"
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": cl["id"], "action": "accept"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["agreed_price"] == 1700
+    assert body["offer_price"] is None and body["offer_by"] is None
+
+    # price is locked after the decision
+    r = client.post(f"/bookings/{bid}/bargain", json={"actor_id": cl["id"], "action": "offer", "price": 100})
+    assert r.status_code == 409
+
+    # system messages recorded the whole negotiation
+    msgs = client.get(f"/bookings/{bid}/messages", params={"viewer_id": cl["id"]}).json()
+    sys_bodies = [m["body"] for m in msgs if m["kind"] == "system"]
+    assert any("offered ₹1,500" in b for b in sys_bodies)
+    assert any("Counter-offer: ₹1,700" in b for b in sys_bodies)
+    assert any("Price agreed at ₹1,700" in b for b in sys_bodies)
+
+
+def test_accept_at_listed_rate_clears_open_offer(client):
+    creator = make_user(client, "Clear Offer Creator")
+    cl = make_user(client, "Clear Offer Client")
+    gig = make_gig(client, creator["id"], "Clear Offer Gig", rate=1000)
+    r = client.post("/bookings", json={
+        "gig_id": gig["id"], "client_id": cl["id"], "client_name": "Clear Offer Client",
+        "deadline": "2026-12-01", "offer_price": 800,
+    })
+    booking = r.json()
+    assert decide(client, booking["id"], creator["id"], "accepted").status_code == 200
+    final = client.get(f"/bookings/{booking['id']}").json()
+    assert final["status"] == "accepted"
+    assert final["offer_price"] is None
+
+
+def test_dm_thread_lifecycle(client):
+    a = make_user(client, "DM Alice")
+    b = make_user(client, "DM Bob")
+    stranger = make_user(client, "DM Stranger")
+
+    # open (creates), open again (returns the same thread)
+    r = client.post("/dm/threads", json={"me_id": a["id"], "other_user_id": b["id"]})
+    assert r.status_code == 201
+    thread = r.json()
+    r2 = client.post("/dm/threads", json={"me_id": b["id"], "other_user_id": a["id"]})
+    assert r2.status_code == 201
+    assert r2.json()["id"] == thread["id"]
+
+    # cannot message yourself or a ghost
+    assert client.post("/dm/threads", json={"me_id": a["id"], "other_user_id": a["id"]}).status_code == 400
+    assert client.post("/dm/threads", json={"me_id": a["id"], "other_user_id": 99999}).status_code == 404
+
+    # strangers cannot read; parties can post and list
+    r = client.get(f"/dm/threads/{thread['id']}/messages", params={"viewer_id": stranger["id"]})
+    assert r.status_code == 403
+    r = client.post(f"/dm/threads/{thread['id']}/messages", json={"sender_id": a["id"], "body": "Hey Bob!"})
+    assert r.status_code == 201
+    client.post(f"/dm/threads/{thread['id']}/messages", json={"sender_id": b["id"], "body": "Hey Alice!"})
+
+    msgs = client.get(f"/dm/threads/{thread['id']}/messages", params={"viewer_id": a["id"]}).json()
+    assert [m["body"] for m in msgs] == ["Hey Bob!", "Hey Alice!"]
+
+    # thread list shows the other party and the latest message
+    threads = client.get("/dm/threads", params={"user_id": a["id"]}).json()
+    mine = next(t for t in threads if t["id"] == thread["id"])
+    assert mine["other_user_id"] == b["id"]
+    assert mine["last_message"] == "Hey Alice!"
+
+
+def test_list_gigs_by_creator_filter(client):
+    creator = make_user(client, "Filter Creator")
+    make_gig(client, creator["id"], "Filter Gig A")
+    make_gig(client, creator["id"], "Filter Gig B")
+    gigs = client.get("/gigs", params={"creator_id": creator["id"]}).json()
+    assert {g["title"] for g in gigs} == {"Filter Gig A", "Filter Gig B"}

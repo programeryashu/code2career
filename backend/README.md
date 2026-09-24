@@ -13,6 +13,11 @@ The repo root holds the React frontend — see the [root README](../README.md) f
 - **Gigs** — post, browse, keyword-search, filter by category, and sort (recommended / newest / price low→high / price high→low).
 - **Bookings** — clients request a gig with a deadline and free-text requirements.
 
+### Communication & negotiation (live parity with the frontend)
+- **Booking chat** — every booking has a message thread. The booking's `initial_message` seeds the thread, and system events (offers, agreements, cascades) are recorded as messages. Only the client and the gig's creator can read/write (`403` for anyone else); chat closes on a declined booking (`409`).
+- **Price bargaining** — `offer → counter → accept/decline` on a pending booking. Only the client can open; only the other side may respond; everything must stay below the listed rate (`422`); the price locks once agreed **or** once the booking is decided (`409`). A plain accept at the listed rate clears any standing offer.
+- **Direct messages** — user-to-user threads independent of bookings, keyed by user pair (one thread per pair, regardless of who opens it), with privacy enforcement (`403`) and latest-message previews in the thread list.
+
 ### Business rules (the interesting part)
 - **Single-active-booking rule (DP1)** — a gig holds at most one `accepted` booking at a time; booking an unavailable gig is rejected with a clear `decided_reason`.
 - **Booking state machine (DP2)** — `PENDING → ACCEPTED / DECLINED`, decisions recorded with timestamp + reason. When a creator accepts a request, **all other pending requests on that gig are auto-declined** ("Gig no longer available") in the same transaction.
@@ -39,7 +44,7 @@ Both use `gpt-4o-mini` when a key is configured; the heuristic fallback keeps th
 | ORM        | SQLAlchemy 2.0 (declarative) |
 | Database   | SQLite (file-based, auto-created + seeded) |
 | Validation | Pydantic v2 schemas |
-| Tests      | pytest + httpx (TestClient) — **18 tests** |
+| Tests      | pytest + httpx (TestClient) — **24 tests** |
 | AI         | OpenAI Chat Completions (optional), stdlib `urllib` — no extra dependency |
 
 ---
@@ -50,12 +55,12 @@ Both use `gpt-4o-mini` when a key is configured; the heuristic fallback keeps th
 backend/
 ├── app/
 │   ├── main.py      # all routes, business rules, AI integration
-│   ├── models.py    # User, Gig, Booking, Review tables
+│   ├── models.py    # User, Gig, Booking, Review, Message, DmThread, DmMessage tables
 │   ├── schemas.py   # Pydantic request/response models
 │   └── seed.py      # demo data (5 users, 10 gigs, bookings, reviews)
 ├── tests/
 │   ├── conftest.py  # temp-DB fixture, isolated per test session
-│   └── test_api.py  # 18 tests: CRUD, DP1/DP2 rules, reviews, AI, sorting
+│   └── test_api.py  # 24 tests: CRUD, DP1/DP2, bargaining, chat, DMs, AI, sorting
 └── requirements.txt
 ```
 
@@ -93,7 +98,7 @@ uvicorn app.main:app --reload --port 8000
 | `GET`   | `/health`                       | Liveness probe |
 | `GET`   | `/users`                        | List users |
 | `POST`  | `/users`                        | Create user (name, bio, skills) |
-| `GET`   | `/gigs`                         | List gigs — `q`, `category`, `sort=recommended\|newest\|price_asc\|price_desc` |
+| `GET`   | `/gigs`                         | List gigs — `q`, `category`, `creator_id`, `sort=recommended\|newest\|price_asc\|price_desc` |
 | `GET`   | `/gigs/{gig_id}`                | Gig detail incl. aggregate rating |
 | `POST`  | `/gigs`                         | Create gig (creator_id, title, category, rate, description) |
 | `GET`   | `/gigs/{gig_id}/reviews`        | Reviews for a gig |
@@ -101,8 +106,15 @@ uvicorn app.main:app --reload --port 8000
 | `GET`   | `/creators/{creator_id}`        | Creator profile: bio, skills, stats, gigs, reviews |
 | `GET`   | `/bookings`                     | Bookings by `client_id` |
 | `GET`   | `/bookings/{booking_id}`        | Booking detail |
-| `POST`  | `/bookings`                     | Request a booking (enforces single-active-booking rule) |
-| `PATCH` | `/bookings/{booking_id}/status` | Creator accepts/declines — triggers the DP2 auto-decline cascade |
+| `POST`  | `/bookings`                     | Request a booking (enforces single-active-booking rule; `initial_message` + `offer_price` seed the chat) |
+| `PATCH` | `/bookings/{booking_id}/status` | Creator accepts/declines — triggers the DP2 auto-decline cascade; accepting at the listed rate clears any open offer |
+| `GET`   | `/bookings/{booking_id}/messages` | Booking chat thread — `viewer_id` must be the client or creator (`403`) |
+| `POST`  | `/bookings/{booking_id}/messages` | Post a chat message (closed on declined bookings, `409`) |
+| `POST`  | `/bookings/{booking_id}/bargain`  | `offer` / `counter` / `accept` / `decline` on the price (locks after agreement or decision) |
+| `GET`   | `/dm/threads`                   | DM threads for `user_id`, latest activity first |
+| `POST`  | `/dm/threads`                   | Open (or fetch) the 1:1 thread between two users |
+| `GET`   | `/dm/threads/{thread_id}/messages` | DM history — `viewer_id` must be a participant (`403`) |
+| `POST`  | `/dm/threads/{thread_id}/messages` | Send a DM |
 | `GET`   | `/creator/bookings`             | All incoming requests across a creator's gigs |
 | `POST`  | `/gigs/assist`                  | AI Gig Builder → suggested gig draft |
 | `POST`  | `/ai/project-brief`             | Requirement → structured project brief |
@@ -135,7 +147,7 @@ cd backend
 pytest -v
 ```
 
-18 tests cover the full API surface, including the business rules: single-active-booking, the accept-cascade, review eligibility (403/409), smart-search hint parsing, all four sort modes, and the AI endpoints' fallback behavior.
+24 tests cover the full API surface, including the business rules: single-active-booking, the accept-cascade, review eligibility (403/409), smart-search hint parsing, all four sort modes, the AI endpoints' fallback behavior, booking chat (permissions + declined lock), the full bargain flow (offer → counter → accept, with lock rules), and DM threads (pairing, privacy, previews).
 
 ---
 

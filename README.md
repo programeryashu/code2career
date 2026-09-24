@@ -30,6 +30,8 @@ The frontend ships with a **swappable API client**: the entire app runs on in-me
 - Creator profiles with bios, skill chips, and aggregate ratings
 - Reviews & ratings (only accepted clients can review, once per gig)
 - Saved gigs · notification bell for pending requests
+- **Booking chat & price bargaining** — message threads per booking, with `offer → counter → accept` negotiation that stays below the listed rate (works in both mock and live mode)
+- **Direct messages** — 1:1 user-to-user threads with unread badges, independent of bookings
 
 **Booking rules (backend-enforced)**
 - **DP1 — single active booking:** a gig holds at most one accepted booking; booking an unavailable gig is rejected with a clear reason
@@ -37,10 +39,17 @@ The frontend ships with a **swappable API client**: the entire app runs on in-me
 - **Creator-only decisions** (`403`) and immutable decided bookings (`409`)
 
 **Discovery & AI**
-- **DP3 — smart search:** `"React developer under 3000"` is parsed server-side for category + budget hints; plain keyword search still works
+- **DP3 — smart search:** `"React developer under 3000"` is parsed server-side for category + budget hints; plain keyword search still works. The marketplace shows a live "✨ Understood" chip when hints are detected
 - **AI Gig Builder:** a sentence like *"I can make websites using React and Tailwind"* becomes a prefilled gig draft
 - **AI Project Brief:** accepted bookings generate a structured brief (objective, deliverables, milestones, timeline)
 - AI endpoints use OpenAI when `OPENAI_API_KEY` is set, with a deterministic offline fallback — zero setup required
+
+**UI & experience**
+- **Dark mode** across the whole app — persisted preference, follows the system on first visit, toggle in the header, no flash on load
+- **Toasts & confirm modals** on booking, publish, accept/decline, bargain, and AI actions (no more `window.confirm`)
+- **Motion** — page transitions, staggered card entrances, save-star pulse, all respecting `prefers-reduced-motion`
+- **Shareable marketplace URLs** — search, category, and sort are synced to the query string
+- **Star ratings** from the API surfaced on cards, gig details, and creator profiles
 
 ## Quickstart
 
@@ -119,7 +128,7 @@ Then add the deployed frontend URL to the backend's `CORS_ORIGINS` — requests 
 ## Testing & CI
 
 ```bash
-cd backend && pytest -v   # 18 tests: CRUD, DP1/DP2 rules, reviews, smart search, AI fallback
+cd backend && pytest -v   # 24 tests: CRUD, DP1/DP2 rules, chat, bargaining, DMs, reviews, smart search, AI fallback
 npm run typecheck         # frontend types
 npm run build             # frontend production build
 ```
@@ -128,4 +137,4 @@ CI runs on every push/PR: **backend** installs pinned deps and runs `pytest`; **
 
 ## Documentation
 
-- [`backend/README.md`](backend/README.md) — architecture, business rules, full API reference, env vars, seed data
+- [`backend/README.md`](backend/README.md) — architecture, business rules, full API reference (including chat, bargaining, and DM endpoints), env vars, seed data

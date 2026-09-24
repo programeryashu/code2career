@@ -12,15 +12,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, Booking, Gig, Review, User, make_engine
+from .models import Base, Booking, DmMessage, DmThread, Gig, Message, Review, User, make_engine
 from .schemas import (
+    BargainPayload,
     BookingCreate,
     BookingOut,
     BookingStatusUpdate,
     BriefRequest,
     CreatorProfileOut,
+    DmMessageCreate,
+    DmMessageOut,
+    DmThreadCreate,
+    DmThreadOut,
     GigCreate,
     GigOut,
+    MessageCreate,
+    MessageOut,
     ProjectBrief,
     ReviewCreate,
     ReviewOut,
@@ -134,6 +141,10 @@ def booking_out(db: Session, booking: Booking) -> BookingOut:
         client_name=booking.client_name,
         deadline=booking.deadline,
         requirements=booking.requirements or "",
+        initial_message=booking.initial_message,
+        offer_price=booking.offer_price,
+        offer_by=booking.offer_by,  # type: ignore[arg-type]
+        agreed_price=booking.agreed_price,
         status=booking.status,
         decided_reason=booking.decided_reason,
         decided_at=booking.decided_at,
@@ -188,6 +199,7 @@ def list_gigs(
     q: str = "",
     category: str = "",
     sort: str = "recommended",
+    creator_id: int | None = None,
     db: Session = Depends(get_db),
 ):
     if sort not in VALID_SORTS:
@@ -211,6 +223,8 @@ def list_gigs(
             (c for c in VALID_CATEGORIES if c.lower() in q.lower()), None
         )
     query = select(Gig)
+    if creator_id is not None:
+        query = query.where(Gig.creator_id == creator_id)
     if category and category != "All":
         if category not in VALID_CATEGORIES:
             raise HTTPException(status_code=422, detail=f"unknown category: {category}")
@@ -309,9 +323,172 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)):
         client_name=payload.client_name.strip(),
         deadline=payload.deadline,
         requirements=payload.requirements.strip(),
+        initial_message=(payload.initial_message or None),
+        offer_price=payload.offer_price,
+        offer_by=("client" if payload.offer_price is not None else None),
         status="pending",
     )
     db.add(booking)
+    db.commit()
+    db.refresh(booking)
+    if payload.initial_message:
+        db.add(Message(
+            booking_id=booking.id,
+            sender_id=payload.client_id,
+            sender_name=payload.client_name.strip(),
+            kind="user",
+            body=payload.initial_message.strip(),
+        ))
+    if payload.offer_price is not None:
+        db.add(Message(
+            booking_id=booking.id,
+            sender_id=None,
+            sender_name="SkillSwap",
+            kind="system",
+            body=(
+                f"💬 {payload.client_name.strip()} offered ₹{payload.offer_price:,} "
+                f"(listed: ₹{gig.rate:,})."
+            ),
+        ))
+    db.commit()
+    return booking_out(db, booking)
+
+
+# ---------- booking chat + bargaining (live parity with the mock client) ----------
+
+def _booking_party_ids(db: Session, booking: Booking) -> list[int]:
+    """The client and the gig's creator — the only two parties of a booking."""
+    gig = db.get(Gig, booking.gig_id)
+    party_ids = [booking.client_id]
+    if gig:
+        party_ids.append(gig.creator_id)
+    return party_ids
+
+
+def _require_booking_party(db: Session, booking: Booking, actor_id: int) -> None:
+    if actor_id not in _booking_party_ids(db, booking):
+        raise HTTPException(status_code=403, detail="Only the client or the gig's creator can do this.")
+
+
+def _push_system_message(db: Session, booking_id: int, body: str) -> None:
+    db.add(Message(booking_id=booking_id, sender_id=None, sender_name="SkillSwap", kind="system", body=body))
+
+
+@app.get("/bookings/{booking_id}/messages", response_model=list[MessageOut])
+def list_booking_messages(booking_id: int, viewer_id: int = Query(...), db: Session = Depends(get_db)):
+    booking = db.get(Booking, booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    _require_booking_party(db, booking, viewer_id)
+    rows = db.scalars(
+        select(Message).where(Message.booking_id == booking_id).order_by(Message.id)
+    ).all()
+    return [
+        MessageOut(
+            id=m.id, booking_id=m.booking_id, sender_id=m.sender_id,
+            sender_name=m.sender_name, kind=m.kind, body=m.body, created_at=m.created_at,
+        )
+        for m in rows
+    ]
+
+
+@app.post("/bookings/{booking_id}/messages", response_model=MessageOut, status_code=201)
+def post_booking_message(booking_id: int, payload: MessageCreate, db: Session = Depends(get_db)):
+    booking = db.get(Booking, booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    _require_booking_party(db, booking, payload.sender_id)
+    if booking.status == "declined":
+        raise HTTPException(status_code=409, detail="Chat is closed on a declined booking.")
+    sender = db.get(User, payload.sender_id)
+    msg = Message(
+        booking_id=booking_id,
+        sender_id=payload.sender_id,
+        sender_name=sender.name if sender else "Unknown",
+        kind="user",
+        body=payload.body.strip(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return MessageOut(
+        id=msg.id, booking_id=msg.booking_id, sender_id=msg.sender_id,
+        sender_name=msg.sender_name, kind=msg.kind, body=msg.body, created_at=msg.created_at,
+    )
+
+
+@app.post("/bookings/{booking_id}/bargain", response_model=BookingOut)
+def bargain_booking(booking_id: int, payload: BargainPayload, db: Session = Depends(get_db)):
+    """Offer / accept / counter / decline on a pending booking's price.
+
+    Mirrors the mock client's rules: only the client can make an opening
+    offer, only the other side may respond, everything stays below the
+    listed rate, and price is locked once the booking is decided.
+    """
+    booking = db.get(Booking, booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    gig = db.get(Gig, booking.gig_id)
+    _require_booking_party(db, booking, payload.actor_id)
+    if booking.status != "pending":
+        raise HTTPException(status_code=409, detail="Price is locked once the booking is decided.")
+    if booking.agreed_price is not None:
+        raise HTTPException(status_code=409, detail="Price already agreed — bargaining is closed.")
+    if not gig:
+        raise HTTPException(status_code=404, detail="Gig not found")
+
+    def fmt(n: int) -> str:
+        return f"₹{n:,}"
+
+    actor_is_client = payload.actor_id == booking.client_id
+    actor_is_creator = payload.actor_id == gig.creator_id
+
+    if payload.action == "offer":
+        if not actor_is_client:
+            raise HTTPException(status_code=403, detail="Only the client can make an opening offer.")
+        if booking.offer_price is not None:
+            raise HTTPException(status_code=409, detail="There is already an offer on the table.")
+        if payload.price is None or payload.price >= gig.rate:
+            raise HTTPException(status_code=422, detail=f"Offer must be below the listed rate ({fmt(gig.rate)}).")
+        booking.offer_price = payload.price
+        booking.offer_by = "client"
+        _push_system_message(db, booking.id, f"💬 {booking.client_name} offered {fmt(payload.price)} (listed: {fmt(gig.rate)}).")
+        db.commit()
+        db.refresh(booking)
+        return booking_out(db, booking)
+
+    if booking.offer_price is None:
+        raise HTTPException(status_code=409, detail="No offer on the table to respond to.")
+    holder_is_client = booking.offer_by == "client"
+    if (holder_is_client and not actor_is_creator) or (not holder_is_client and not actor_is_client):
+        raise HTTPException(status_code=403, detail="Wait for the other side to respond to your offer.")
+
+    if payload.action == "accept":
+        agreed = booking.offer_price
+        booking.agreed_price = agreed
+        booking.offer_price = None
+        booking.offer_by = None
+        _push_system_message(db, booking.id, f"🤝 Price agreed at {fmt(agreed)} (listed: {fmt(gig.rate)}).")
+        db.commit()
+        db.refresh(booking)
+        return booking_out(db, booking)
+
+    if payload.action == "counter":
+        if payload.price is None:
+            raise HTTPException(status_code=422, detail="Counter-offer needs a price.")
+        if payload.price >= gig.rate:
+            raise HTTPException(status_code=422, detail=f"Counter must stay below the listed rate ({fmt(gig.rate)}).")
+        booking.offer_price = payload.price
+        booking.offer_by = "creator" if holder_is_client else "client"
+        _push_system_message(db, booking.id, f"🔁 Counter-offer: {fmt(payload.price)} (listed: {fmt(gig.rate)}).")
+        db.commit()
+        db.refresh(booking)
+        return booking_out(db, booking)
+
+    # decline
+    booking.offer_price = None
+    booking.offer_by = None
+    _push_system_message(db, booking.id, "❌ Bargain declined — the listed rate stands.")
     db.commit()
     db.refresh(booking)
     return booking_out(db, booking)
@@ -613,6 +790,124 @@ def project_brief(payload: BriefRequest):
     return _heuristic_brief(payload)
 
 
+# ---------- direct messages (user-to-user, independent of bookings) ----------
+
+@app.get("/dm/threads", response_model=list[DmThreadOut])
+def list_dm_threads(user_id: int = Query(...), db: Session = Depends(get_db)):
+    """All DM threads involving user_id, most recent activity first."""
+    threads = db.scalars(
+        select(DmThread)
+        .where((DmThread.user_a_id == user_id) | (DmThread.user_b_id == user_id))
+        .order_by(DmThread.created_at.desc(), DmThread.id.desc())
+    ).all()
+    out: list[DmThreadOut] = []
+    for t in threads:
+        other_id = t.user_b_id if t.user_a_id == user_id else t.user_a_id
+        other = db.get(User, other_id)
+        if not other:
+            continue
+        last = db.scalar(
+            select(DmMessage)
+            .where(DmMessage.thread_id == t.id)
+            .order_by(DmMessage.id.desc())
+        )
+        out.append(DmThreadOut(
+            id=t.id,
+            other_user_id=other.id,
+            other_user_name=other.name,
+            last_message=last.body if last else None,
+            last_message_at=last.created_at if last else t.created_at,
+            created_at=t.created_at,
+        ))
+    out.sort(key=lambda t: t.last_message_at, reverse=True)
+    return out
+
+
+@app.post("/dm/threads", response_model=DmThreadOut, status_code=201)
+def open_dm_thread(payload: DmThreadCreate, db: Session = Depends(get_db)):
+    """Open (or return the existing) 1:1 thread between two users."""
+    me = db.get(User, payload.me_id)
+    other = db.get(User, payload.other_user_id)
+    if not me:
+        raise HTTPException(status_code=404, detail="Pick who you are first.")
+    if not other:
+        raise HTTPException(status_code=404, detail="That user does not exist.")
+    if other.id == me.id:
+        raise HTTPException(status_code=400, detail="You cannot message yourself.")
+
+    lo, hi = sorted((me.id, other.id))
+    thread = db.scalar(
+        select(DmThread).where(DmThread.user_a_id == lo, DmThread.user_b_id == hi)
+    )
+    created = False
+    if not thread:
+        thread = DmThread(user_a_id=lo, user_b_id=hi)
+        db.add(thread)
+        db.commit()
+        db.refresh(thread)
+        created = True
+
+    last = db.scalar(
+        select(DmMessage).where(DmMessage.thread_id == thread.id).order_by(DmMessage.id.desc())
+    )
+    return DmThreadOut(
+        id=thread.id,
+        other_user_id=other.id,
+        other_user_name=other.name,
+        last_message=last.body if last else None,
+        last_message_at=last.created_at if last else thread.created_at,
+        created_at=thread.created_at,
+    )
+
+
+def _dm_thread_or_404(db: Session, thread_id: int) -> DmThread:
+    thread = db.get(DmThread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return thread
+
+
+def _require_dm_party(thread: DmThread, viewer_id: int) -> None:
+    if viewer_id not in (thread.user_a_id, thread.user_b_id):
+        raise HTTPException(status_code=403, detail="This conversation is private.")
+
+
+@app.get("/dm/threads/{thread_id}/messages", response_model=list[DmMessageOut])
+def list_dm_messages(thread_id: int, viewer_id: int = Query(...), db: Session = Depends(get_db)):
+    thread = _dm_thread_or_404(db, thread_id)
+    _require_dm_party(thread, viewer_id)
+    rows = db.scalars(
+        select(DmMessage).where(DmMessage.thread_id == thread_id).order_by(DmMessage.id)
+    ).all()
+    return [
+        DmMessageOut(
+            id=m.id, thread_id=m.thread_id, sender_id=m.sender_id,
+            sender_name=m.sender_name, body=m.body, created_at=m.created_at,
+        )
+        for m in rows
+    ]
+
+
+@app.post("/dm/threads/{thread_id}/messages", response_model=DmMessageOut, status_code=201)
+def post_dm_message(thread_id: int, payload: DmMessageCreate, db: Session = Depends(get_db)):
+    thread = _dm_thread_or_404(db, thread_id)
+    _require_dm_party(thread, payload.sender_id)
+    sender = db.get(User, payload.sender_id)
+    msg = DmMessage(
+        thread_id=thread_id,
+        sender_id=payload.sender_id,
+        sender_name=sender.name if sender else "Unknown",
+        body=payload.body.strip(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return DmMessageOut(
+        id=msg.id, thread_id=msg.thread_id, sender_id=msg.sender_id,
+        sender_name=msg.sender_name, body=msg.body, created_at=msg.created_at,
+    )
+
+
 # ---------- creator dashboard ----------
 
 @app.get("/creator/bookings", response_model=list[BookingOut])
@@ -650,6 +945,12 @@ def update_booking_status(
     booking.status = payload.status
     booking.decided_at = now
     booking.decided_reason = "Accepted by creator" if payload.status == "accepted" else "Creator declined this booking"
+
+    # A plain accept at the listed rate closes any standing offer.
+    if payload.status == "accepted" and booking.offer_price is not None and booking.agreed_price is None:
+        booking.offer_price = None
+        booking.offer_by = None
+        _push_system_message(db, booking.id, "✅ Creator accepted this booking at the listed rate.")
 
     # DP2 cascade: accepting one pending booking auto-declines all sibling pendings
     if payload.status == "accepted":
