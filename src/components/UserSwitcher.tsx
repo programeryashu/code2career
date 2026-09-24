@@ -34,20 +34,20 @@ export default function UserSwitcher() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
       >
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-violet-100 text-xs font-bold text-violet-700">
+        <span className="grid h-6 w-6 place-items-center rounded-full bg-violet-100 text-xs font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
           {currentUser ? currentUser.name[0]?.toUpperCase() : "?"}
         </span>
         <span className="max-w-[10rem] truncate">
           {loading ? "…" : (currentUser?.name ?? "Who are you?")}
         </span>
-        <span className="text-xs text-slate-400">▾</span>
+        <span className="text-xs text-slate-400 dark:text-zinc-500">▾</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-          <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className="animate-fadeIn absolute right-0 z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
             Acting as
           </p>
           <ul className="max-h-56 overflow-auto">
@@ -60,8 +60,8 @@ export default function UserSwitcher() {
                   }}
                   className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm ${
                     u.id === currentUser?.id
-                      ? "bg-violet-50 font-semibold text-violet-700"
-                      : "text-slate-700 hover:bg-slate-50"
+                      ? "bg-violet-50 font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                      : "text-slate-700 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
                   }`}
                 >
                   <span className="truncate">{u.name}</span>
@@ -70,7 +70,7 @@ export default function UserSwitcher() {
               </li>
             ))}
           </ul>
-          <div className="mt-2 border-t border-slate-100 pt-2">
+          <div className="mt-2 border-t border-slate-100 pt-2 dark:border-zinc-800">
             <div className="flex gap-2">
               <input
                 value={name}
@@ -82,12 +82,12 @@ export default function UserSwitcher() {
               <button
                 onClick={add}
                 disabled={busy || !name.trim()}
-                className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
               >
                 Add
               </button>
             </div>
-            <p className="mt-1 px-1 text-[11px] text-slate-400">
+            <p className="mt-1 px-1 text-[11px] text-slate-400 dark:text-zinc-500">
               No login — pick a persona or add your own name.
             </p>
           </div>

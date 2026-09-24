@@ -49,6 +49,9 @@ export interface GigWithCreator extends Gig {
   creator_name: string;
   /** DP2 surfacing: once a gig has an accepted booking, it is closed. */
   is_open: boolean;
+  /** Aggregate rating across the creator's gigs (live API only). */
+  rating_avg?: number | null;
+  rating_count?: number;
 }
 
 export interface GigCreate {
@@ -59,7 +62,7 @@ export interface GigCreate {
   description: string;
 }
 
-export type SortOption = "recommended" | "newest" | "price_asc";
+export type SortOption = "recommended" | "newest" | "price_asc" | "price_desc";
 
 export type OfferHolder = "client" | "creator";
 

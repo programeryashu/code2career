@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import GigCard from "../components/GigCard";
+import { StaggerGrid } from "../components/Motion";
 import { EmptyState, ErrorNote, PageHeading, SkeletonGrid } from "../components/ui";
 import { useSavedGigs } from "../context/SavedGigsContext";
 import { api } from "../lib/apiClient";
@@ -54,18 +55,18 @@ export default function SavedGigsPage() {
           action={
             <Link
               to="/marketplace"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700"
             >
               Explore services →
             </Link>
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerGrid>
           {gigs.map((gig) => (
             <GigCard key={gig.id} gig={gig} />
           ))}
-        </div>
+        </StaggerGrid>
       )}
     </div>
   );

@@ -125,18 +125,58 @@ async function mockListGigs(params?: {
   const category = params?.category ?? "All";
   const sort = params?.sort ?? "recommended";
 
+  // DP3 mirror — parse the same budget/category hints the backend does.
+  const budgetMatch = q.match(/(?:under|below|less than|max(?:imum)?)\s*(?:rs\.?|inr|₹)?\s*(\d{2,6})/);
+  const budgetMax = budgetMatch ? Number(budgetMatch[1]) : null;
+  const categoryHint = [
+    "design", "development", "video editing", "tutoring", "music", "content",
+  ].find((c) => q.includes(c));
+
   let rows = gigRows();
-  if (category !== "All") rows = rows.filter((g) => g.category === category);
-  if (q) {
-    rows = rows.filter(
-      (g) =>
-        g.title.toLowerCase().includes(q) ||
-        g.description.toLowerCase().includes(q),
+  if (category !== "All") {
+    rows = rows.filter((g) => g.category === category);
+  } else if (categoryHint) {
+    rows = rows.filter((g) => g.category.toLowerCase() === categoryHint);
+  }
+  if (budgetMax != null) {
+    rows = rows.filter((g) => g.rate <= budgetMax);
+  }
+
+  const terms = q.split(/\s+/).filter(Boolean);
+  if (terms.length) {
+    if (sort === "recommended") {
+      // Relevance: any term hitting title or description, title hits ranked higher.
+      rows = rows
+        .map((g) => {
+          const title = g.title.toLowerCase();
+          const desc = g.description.toLowerCase();
+          return {
+            g,
+            titleHits: terms.filter((t) => title.includes(t)).length,
+            descHits: terms.filter((t) => desc.includes(t)).length,
+          };
+        })
+        .filter((r) => r.titleHits > 0 || r.descHits > 0)
+        .sort(
+          (a, b) =>
+            b.titleHits - a.titleHits ||
+            b.descHits - a.descHits ||
+            b.g.created_at.localeCompare(a.g.created_at),
+        )
+        .map((r) => r.g);
+      return rows;
+    }
+    rows = rows.filter((g) =>
+      terms.some(
+        (t) => g.title.toLowerCase().includes(t) || g.description.toLowerCase().includes(t),
+      ),
     );
   }
 
   if (sort === "price_asc") {
     rows.sort((a, b) => a.rate - b.rate);
+  } else if (sort === "price_desc") {
+    rows.sort((a, b) => b.rate - a.rate);
   } else if (sort === "newest") {
     rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
   } else {

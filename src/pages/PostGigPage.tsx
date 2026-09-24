@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Field, PageHeading, btnGhost, btnPrimary, inputClass } from "../components/ui";
+import { useFeedback } from "../components/Feedback";
 import { useUsers } from "../context/UserContext";
 import { api } from "../lib/apiClient";
 import { CATEGORIES, type Category } from "../lib/types";
@@ -9,6 +10,7 @@ export default function PostGigPage() {
   const { currentUser } = useUsers();
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useFeedback();
   const locationState = (location.state || {}) as {
     prefillTitle?: string;
     prefillCategory?: Category;
@@ -46,6 +48,7 @@ export default function PostGigPage() {
     e.preventDefault();
     if (!currentUser) {
       setError("Please select who you are acting as (top-right switcher) before publishing.");
+      toast("Pick a persona in the top-right switcher before publishing", "error");
       return;
     }
     if (!valid) return;
@@ -59,9 +62,11 @@ export default function PostGigPage() {
         rate: Math.round(rateNumber),
         description: description.trim(),
       });
+      toast(`Service published — "${gig.title}" is now live 🎉`, "success");
       navigate(`/gigs/${gig.id}`);
     } catch (err) {
       setError((err as Error).message);
+      toast((err as Error).message, "error");
       setBusy(false);
     }
   }
@@ -91,14 +96,14 @@ export default function PostGigPage() {
       />
 
       {/* AI Gig Assistant Helper */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60">
         <div className="flex items-center gap-2">
           <span className="text-sm">✨</span>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-zinc-200">
             AI Gig Builder (Optional)
           </h3>
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
           Describe what you can do in one sentence — our AI will generate a structured title, category, and description.
         </p>
 
@@ -119,18 +124,18 @@ export default function PostGigPage() {
             type="button"
             onClick={runAssistant}
             disabled={assistBusy || idea.trim().length < 6}
-            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-slate-800 active:scale-95 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
           >
             {assistBusy ? "Thinking…" : "Auto-fill ✨"}
           </button>
         </div>
-        {assistNote && <p className="mt-2.5 text-xs font-medium text-violet-700">{assistNote}</p>}
+        {assistNote && <p className="mt-2.5 text-xs font-medium text-violet-700 dark:text-violet-400">{assistNote}</p>}
       </div>
 
       {/* Main Publishing Form */}
       <form
         onSubmit={submit}
-        className="space-y-6 rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs"
+        className="space-y-6 rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60"
       >
         <Field
           label="Service Title"
@@ -186,12 +191,12 @@ export default function PostGigPage() {
         </Field>
 
         {error && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-950/30 dark:text-rose-300">
             {error}
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-between border-t border-slate-100 pt-4 dark:border-zinc-800">
           <Link to="/marketplace" className={btnGhost}>
             Cancel
           </Link>

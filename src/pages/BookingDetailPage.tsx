@@ -8,6 +8,7 @@ import {
   btnPrimary,
   inputClass,
 } from "../components/ui";
+import { useFeedback } from "../components/Feedback";
 import { useUsers } from "../context/UserContext";
 import { api } from "../lib/apiClient";
 import { formatDeadline, formatINR } from "../lib/format";
@@ -27,6 +28,7 @@ interface GeneratedBrief {
 export default function BookingDetailPage() {
   const { id } = useParams();
   const { currentUser } = useUsers();
+  const { toast } = useFeedback();
   const [booking, setBooking] = useState<BookingWithDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [creatorId, setCreatorId] = useState<number | null>(null);
@@ -75,7 +77,7 @@ export default function BookingDetailPage() {
     return (
       <div className="space-y-4">
         <ErrorNote message={error || "Booking not found."} />
-        <Link to="/marketplace" className="text-xs font-semibold text-violet-700 hover:underline">
+        <Link to="/marketplace" className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-400">
           ← Back to marketplace
         </Link>
       </div>
@@ -130,8 +132,18 @@ export default function BookingDetailPage() {
       setNewOffer("");
       const msgs = await api.listMessages(Number(id));
       setMessages(msgs);
+      const label =
+        action === "offer"
+          ? `Offer of ${formatINR(price ?? 0)} sent`
+          : action === "accept"
+            ? "Offer accepted — price agreed 🤝"
+            : action === "counter"
+              ? `Counter-offer of ${formatINR(price ?? 0)} sent`
+              : "Offer declined";
+      toast(label, action === "decline" ? "info" : "success");
     } catch (err) {
       setError((err as Error).message);
+      toast((err as Error).message, "error");
     } finally {
       setBargainBusy(false);
     }
@@ -156,6 +168,7 @@ export default function BookingDetailPage() {
         notes: `Agreed rate: ${formatINR(booking?.agreed_price ?? booking?.rate ?? 0)}. Work begins upon creator confirmation.`,
       });
       setBriefLoading(false);
+      toast("AI Project Brief generated ✨", "success");
     }, 400);
   }
 
@@ -170,40 +183,40 @@ export default function BookingDetailPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <Link
         to={isClient ? "/my-bookings" : "/dashboard"}
-        className="text-xs font-semibold text-violet-700 hover:underline"
+        className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-400"
       >
         ← Back to {isClient ? "My Bookings" : "Creator Dashboard"}
       </Link>
 
       {/* Booking summary header card */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
                 Booking #{booking.id}
               </span>
               <StatusBadge status={booking.status} />
             </div>
 
-            <h1 className="mt-2 text-xl font-bold text-slate-900">{booking.gig_title}</h1>
+            <h1 className="mt-2 text-xl font-bold text-slate-900 dark:text-zinc-100">{booking.gig_title}</h1>
 
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
               {isClient ? (
-                <>Creator: <span className="font-semibold text-slate-700">{booking.creator_name}</span></>
+                <>Creator: <span className="font-semibold text-slate-700 dark:text-zinc-300">{booking.creator_name}</span></>
               ) : (
-                <>Client: <span className="font-semibold text-slate-700">{booking.client_name}</span></>
+                <>Client: <span className="font-semibold text-slate-700 dark:text-zinc-300">{booking.client_name}</span></>
               )}{" "}
-              · Target deadline: <span className="font-medium text-slate-700">{formatDeadline(booking.deadline)}</span>
+              · Target deadline: <span className="font-medium text-slate-700 dark:text-zinc-300">{formatDeadline(booking.deadline)}</span>
             </p>
           </div>
 
           <div className="text-right">
-            <div className="text-2xl font-extrabold text-slate-900">
+            <div className="text-2xl font-extrabold text-slate-900 dark:text-zinc-100">
               {formatINR(effectiveRate)}
             </div>
             {booking.agreed_price != null && (
-              <p className="text-[11px] font-semibold text-emerald-600">
+              <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                 Negotiated from {formatINR(booking.rate)}
               </p>
             )}
@@ -212,17 +225,17 @@ export default function BookingDetailPage() {
 
         {/* In-Thread Bargaining Panel */}
         {booking.status === "pending" && (
-          <div className="mt-5 rounded-xl border border-amber-200/80 bg-amber-50/70 p-4">
+          <div className="mt-5 rounded-xl border border-amber-200/80 bg-amber-50/70 p-4 dark:border-amber-500/25 dark:bg-amber-950/25">
             {booking.agreed_price != null ? (
-              <p className="text-xs font-semibold text-emerald-800">
+              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
                 🤝 Agreed price: {formatINR(booking.agreed_price)} — locked in once accepted by the creator.
               </p>
             ) : offerOnTable != null ? (
               <div>
-                <p className="text-xs font-semibold text-amber-900">
+                <p className="text-xs font-semibold text-amber-900 dark:text-amber-300">
                   {offerHolder === "client" ? "Client" : "Creator"} proposed rate:{" "}
-                  <span className="font-bold text-sm">{formatINR(offerOnTable)}</span>{" "}
-                  <span className="text-[11px] font-normal text-slate-500">(Listed: {formatINR(booking.rate)})</span>
+                  <span className="text-sm font-bold">{formatINR(offerOnTable)}</span>{" "}
+                  <span className="text-[11px] font-normal text-slate-500 dark:text-zinc-500">(Listed: {formatINR(booking.rate)})</span>
                 </p>
 
                 {canRespond ? (
@@ -230,7 +243,7 @@ export default function BookingDetailPage() {
                     <button
                       onClick={() => bargain("accept")}
                       disabled={bargainBusy}
-                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
                     >
                       🤝 Accept {formatINR(offerOnTable)}
                     </button>
@@ -239,32 +252,32 @@ export default function BookingDetailPage() {
                       onChange={(e) => setCounterPrice(e.target.value)}
                       inputMode="numeric"
                       placeholder="Counter ₹"
-                      className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-900 focus:outline-none"
+                      className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                     />
                     <button
                       onClick={() => bargain("counter", Number(counterPrice))}
                       disabled={bargainBusy || !Number(counterPrice) || Number(counterPrice) >= booking.rate}
-                      className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                      className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 active:scale-95 disabled:opacity-50 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-950/40"
                     >
                       Counter
                     </button>
                     <button
                       onClick={() => bargain("decline")}
                       disabled={bargainBusy}
-                      className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                      className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 active:scale-95 disabled:opacity-50 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-400 dark:hover:bg-rose-950/40"
                     >
                       Decline offer
                     </button>
                   </div>
                 ) : (
-                  <p className="mt-2 text-xs text-amber-800">
+                  <p className="mt-2 text-xs text-amber-800 dark:text-amber-300/80">
                     Waiting for response from {offerHolder === "client" ? "creator" : "client"}.
                   </p>
                 )}
               </div>
             ) : canOpenOffer ? (
               <div>
-                <p className="text-xs font-semibold text-amber-900">
+                <p className="text-xs font-semibold text-amber-900 dark:text-amber-300">
                   Propose custom pricing? Listed standard rate is {formatINR(booking.rate)}.
                 </p>
                 <div className="mt-2.5 flex items-center gap-2">
@@ -273,12 +286,12 @@ export default function BookingDetailPage() {
                     onChange={(e) => setNewOffer(e.target.value)}
                     inputMode="numeric"
                     placeholder={`Offer ₹ (below ${booking.rate})`}
-                    className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs text-slate-900 focus:outline-none"
+                    className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs text-slate-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                   />
                   <button
                     onClick={() => bargain("offer", Number(newOffer))}
                     disabled={bargainBusy || !Number(newOffer) || Number(newOffer) >= booking.rate}
-                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700 active:scale-95 disabled:opacity-50"
                   >
                     Send offer
                   </button>
@@ -290,15 +303,15 @@ export default function BookingDetailPage() {
 
         {/* AI Project Brief Trigger for Accepted Bookings */}
         {booking.status === "accepted" && (
-          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-500">
+          <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-zinc-800">
+            <span className="text-xs text-slate-500 dark:text-zinc-400">
               Booking confirmed and locked in. Ready to structure deliverables?
             </span>
             <button
               type="button"
               onClick={generateProjectBrief}
               disabled={briefLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100 active:scale-95 disabled:opacity-50 dark:border-violet-500/30 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/70"
             >
               <span>✨</span>
               <span>{briefLoading ? "Structuring Brief…" : brief ? "View AI Project Brief" : "Generate AI Project Brief"}</span>
@@ -309,38 +322,38 @@ export default function BookingDetailPage() {
 
       {/* AI Project Brief Panel */}
       {briefOpen && brief && (
-        <div className="rounded-2xl border border-violet-200 bg-white p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="animate-fadeIn space-y-4 rounded-2xl border border-violet-200 bg-white p-6 shadow-sm dark:border-violet-500/30 dark:bg-zinc-900/60">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-zinc-800">
             <div className="flex items-center gap-2">
               <span className="text-sm">🤖</span>
-              <h3 className="text-sm font-bold text-slate-900">AI Project Brief</h3>
-              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">AI Project Brief</h3>
+              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
                 Auto-Generated
               </span>
             </div>
             <button
               onClick={() => setBriefOpen(false)}
-              className="text-xs text-slate-400 hover:text-slate-600"
+              className="text-xs text-slate-400 transition hover:text-slate-600 dark:text-zinc-500 dark:hover:text-zinc-300"
             >
               ✕ Close
             </button>
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
               Objective
             </h4>
-            <p className="mt-1 text-xs text-slate-700">{brief.objective}</p>
+            <p className="mt-1 text-xs text-slate-700 dark:text-zinc-300">{brief.objective}</p>
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
               Deliverables Checklist
             </h4>
-            <ul className="mt-2 space-y-1.5 text-xs text-slate-700">
+            <ul className="mt-2 space-y-1.5 text-xs text-slate-700 dark:text-zinc-300">
               {brief.deliverables.map((d, i) => (
                 <li key={i} className="flex items-center gap-2">
-                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">✓</span>
                   <span>{d}</span>
                 </li>
               ))}
@@ -348,12 +361,12 @@ export default function BookingDetailPage() {
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
               Suggested Milestones
             </h4>
-            <ul className="mt-2 space-y-1 text-xs text-slate-600">
+            <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-zinc-400">
               {brief.milestones.map((m, i) => (
-                <li key={i} className="rounded bg-slate-50 p-2">
+                <li key={i} className="rounded bg-slate-50 p-2 dark:bg-zinc-900">
                   {m}
                 </li>
               ))}
@@ -363,10 +376,10 @@ export default function BookingDetailPage() {
       )}
 
       {/* Direct Messaging & Negotiation Chat */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs">
-        <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="text-sm font-bold text-slate-900">Direct Messages & Project Chat</h2>
-          <p className="text-xs text-slate-400">
+      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60">
+        <div className="border-b border-slate-100 px-6 py-4 dark:border-zinc-800">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100">Direct Messages & Project Chat</h2>
+          <p className="text-xs text-slate-400 dark:text-zinc-500">
             Coordinates requirements, deliverables, and updates securely between client and creator.
           </p>
         </div>
@@ -376,7 +389,7 @@ export default function BookingDetailPage() {
           {messages.map((m) =>
             m.kind === "system" ? (
               <div key={m.id} className="text-center">
-                <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500">
+                <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500 dark:bg-zinc-800 dark:text-zinc-400">
                   {m.body}
                 </span>
               </div>
@@ -389,12 +402,12 @@ export default function BookingDetailPage() {
                   className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
                     m.sender_id === currentUser.id
                       ? "bg-violet-600 text-white"
-                      : "bg-slate-100 text-slate-800"
+                      : "bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-200"
                   }`}
                 >
                   <p
                     className={`mb-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                      m.sender_id === currentUser.id ? "text-violet-200" : "text-slate-400"
+                      m.sender_id === currentUser.id ? "text-violet-200" : "text-slate-400 dark:text-zinc-500"
                     }`}
                   >
                     {m.sender_name}
@@ -409,11 +422,11 @@ export default function BookingDetailPage() {
 
         {/* Input box */}
         {booking.status === "declined" ? (
-          <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400 bg-slate-50 text-center rounded-b-2xl">
+          <div className="rounded-b-2xl border-t border-slate-100 bg-slate-50 px-6 py-3 text-center text-xs text-slate-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500">
             Conversation is closed on a declined booking.
           </div>
         ) : (
-          <form onSubmit={send} className="flex gap-2 border-t border-slate-100 p-4">
+          <form onSubmit={send} className="flex gap-2 border-t border-slate-100 p-4 dark:border-zinc-800">
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -447,19 +460,19 @@ function EmptyStateBlocking(props: {
 }) {
   return (
     <div className="mx-auto max-w-xl">
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xs">
-        <h1 className="text-lg font-bold text-slate-900">{props.gigTitle}</h1>
-        <p className="mt-1 text-xs text-slate-500">
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60">
+        <h1 className="text-lg font-bold text-slate-900 dark:text-zinc-100">{props.gigTitle}</h1>
+        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
           {props.creatorName} · {props.clientName} · Due {props.deadline}
         </p>
-        <p className="mt-3 text-xl font-extrabold text-slate-900">
+        <p className="mt-3 text-xl font-extrabold text-slate-900 dark:text-zinc-100">
           {formatINR(props.rate)}
-          {props.agreed && <span className="ml-1 text-xs text-emerald-600 font-medium">(Bargained)</span>}
+          {props.agreed && <span className="ml-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">(Bargained)</span>}
         </p>
         <div className="mt-3 flex justify-center">
           <StatusBadge status={props.status} />
         </div>
-        <p className="mt-6 text-xs text-slate-500">
+        <p className="mt-6 text-xs text-slate-500 dark:text-zinc-400">
           Select a persona from the top-right switcher to open the conversation and negotiation thread.
         </p>
         <div className="mt-5 flex justify-center gap-3">

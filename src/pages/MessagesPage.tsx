@@ -26,13 +26,10 @@ export default function MessagesPage() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [dms, myBookings, created] = await Promise.all([
+      const [dms, myBookings] = await Promise.all([
         api.listDmThreads(currentUser.id),
         api.listMyBookings(currentUser.id),
-        currentUser ? api.listGigsByCreator(currentUser.id) : Promise.resolve([]),
       ]);
-      const creatorGigIds = new Set(created.map((g) => g.id));
-      void creatorGigIds;
 
       const allMine = new Map<number, BookingWithDetails | BookingWithGig>();
       for (const b of myBookings) allMine.set(b.id, b);
@@ -128,8 +125,8 @@ export default function MessagesPage() {
       {error && <ErrorNote message={error} />}
 
       {/* Start conversation quick pills */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
           Start a new direct message
         </span>
         <div className="mt-2.5 flex flex-wrap gap-2">
@@ -138,7 +135,7 @@ export default function MessagesPage() {
               key={u.id}
               onClick={() => startConversation(u.id)}
               disabled={starting != null}
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-95 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               {starting === u.id ? "Opening…" : `💬 ${u.name}`}
             </button>
@@ -156,30 +153,30 @@ export default function MessagesPage() {
           body="Message a creator from any service page or start a conversation with the personas above."
         />
       ) : (
-        <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
-          <ul className="divide-y divide-slate-100">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-900/60">
+          <ul className="divide-y divide-slate-100 dark:divide-zinc-800">
             {rows.map((r) => (
               <li key={r.key}>
                 <Link
                   to={r.to}
                   onClick={() => currentUser && markSeen(currentUser.id, r.key)}
-                  className="flex items-center gap-3.5 p-4 hover:bg-slate-50/70 transition-colors"
+                  className="flex items-center gap-3.5 p-4 transition-colors hover:bg-slate-50/70 dark:hover:bg-zinc-800/40"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm dark:bg-zinc-800">
                     {r.kind === "dm" ? "💬" : "📦"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-xs font-bold text-slate-900">{r.title}</span>
+                      <span className="truncate text-xs font-bold text-slate-900 dark:text-zinc-100">{r.title}</span>
                       {r.unread > 0 && (
-                        <span className="rounded-full bg-violet-600 px-2 py-0.2 text-[10px] font-bold text-white">
+                        <span className="rounded-full bg-violet-600 px-2 py-0.2 text-[10px] font-bold text-white dark:bg-violet-500">
                           {r.unread} new
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">{r.preview}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-zinc-400">{r.preview}</p>
                   </div>
-                  <span className="shrink-0 text-[11px] text-slate-400">
+                  <span className="shrink-0 text-[11px] text-slate-400 dark:text-zinc-500">
                     {new Date(r.when).toLocaleDateString("en-IN", {
                       day: "numeric",
                       month: "short",
